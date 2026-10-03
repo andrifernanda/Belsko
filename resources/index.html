@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BELSKO - Bel Sekolah Otomatis</title>
+    <link rel="icon" type="image/png" href="icons/appIcon.png">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="theme-light">
+    <!-- Header -->
+    <header class="app-header">
+        <div class="header-left">
+            <div class="school-icon">
+                <img src="icons/appIcon.png" alt="BELSKO Logo" class="school-icon-img">
+            </div>
+            <div class="header-info">
+                <!-- Baris 1: BELSKO {versi} -->
+                <div class="app-title-version">
+                    <span class="app-brand-name">BELSKO</span>
+                    <span class="app-version-badge">v1.0.0</span>
+                </div>
+                <!-- Baris 2: {nama sekolah} -->
+                <div class="school-name-subtitle" id="schoolNameDisplay">Nama Sekolah Belum Diatur</div>
+                <!-- Baris 3: status aktif/nonaktif -->
+                <div class="status-badge" id="statusBadge">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Status: Aktif</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <!-- Toggle Mode Gelap / Terang di Header (Sebelum Tombol Audio) -->
+            <button class="btn-theme-switch" id="headerThemeToggle" onclick="toggleTheme()" title="Ubah Tema Tampilan (Terang / Gelap)" type="button">
+                <span class="theme-switch-track">
+                    <span class="theme-switch-icon icon-sun">☀️</span>
+                    <span class="theme-switch-icon icon-moon">🌙</span>
+                    <span class="theme-switch-thumb"></span>
+                </span>
+                <span class="theme-switch-label" id="headerThemeLabel">Terang</span>
+            </button>
+
+            <!-- Menu Audio (di samping kiri Pengaturan) dengan Caption -->
+            <button class="btn-nav" id="btnNavAudio" onclick="openAudioModal()" title="Koleksi Audio Bel">
+                <span class="btn-nav-icon">🎵</span>
+                <span class="btn-nav-label">Audio</span>
+            </button>
+            <!-- Menu Pengaturan dengan Caption -->
+            <button class="btn-nav" id="btnNavSettings" onclick="openSettings()" title="Pengaturan Aplikasi BELSKO">
+                <span class="btn-nav-icon">⚙️</span>
+                <span class="btn-nav-label">Pengaturan</span>
+            </button>
+            <!-- Menu Waktu (Buka Adjust Date & Time Windows) -->
+            <button class="btn-nav" id="btnNavTime" onclick="openWindowsTimeSettings()" title="Buka Pengaturan Tanggal & Waktu Windows">
+                <span class="btn-nav-icon">🕒</span>
+                <span class="btn-nav-label">Waktu</span>
+            </button>
+            <!-- Tombol Spesial Matikan Aplikasi dengan Peringatan -->
+            <button class="btn-nav btn-nav-danger" id="btnNavExit" onclick="confirmExitApp()" title="Matikan Aplikasi BELSKO">
+                <span class="btn-nav-icon">⛔</span>
+                <span class="btn-nav-label">Matikan</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Quick Control Panel -->
+        <section class="control-panel">
+            <div class="control-card">
+                <div class="control-card-icon">⏰</div>
+                <div class="control-card-info">
+                    <span class="control-label">Bel Otomatis</span>
+                    <span class="control-desc">Aktifkan atau Nonaktifkan Bel</span>
+                </div>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggleGlobal" checked onchange="toggleGlobalBel()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <!-- Card Waktu / Jam Real-Time Digital -->
+            <div class="control-card clock-card">
+                <div class="control-card-icon clock-card-icon">🕒</div>
+                <div class="control-card-info clock-card-info">
+                    <div class="digital-clock" id="digitalClock">
+                        <span class="clock-segment" id="clockHours">00</span>
+                        <span class="clock-separator">:</span>
+                        <span class="clock-segment" id="clockMinutes">00</span>
+                        <span class="clock-separator">:</span>
+                        <span class="clock-segment" id="clockSeconds">00</span>
+                    </div>
+                    <div class="clock-date" id="clockDate">--</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Content Grid: Form + Table -->
+        <div class="content-grid">
+            <!-- Form Add/Edit -->
+            <section class="form-section">
+                <div class="section-header">
+                    <h2 id="formTitle">➕ Tambah Jadwal</h2>
+                </div>
+                <form id="scheduleForm" onsubmit="return saveSchedule(event)">
+                    <input type="hidden" id="editId" value="">
+                    
+                    <div class="form-group">
+                        <label for="inputHariForm">Hari</label>
+                        <select id="inputHariForm" onchange="onFormDayChange(this.value)" required>
+                            <option value="Senin">Senin</option>
+                            <option value="Selasa">Selasa</option>
+                            <option value="Rabu">Rabu</option>
+                            <option value="Kamis">Kamis</option>
+                            <option value="Jumat">Jumat</option>
+                            <option value="Sabtu">Sabtu</option>
+                            <option value="Minggu">Minggu</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="inputWaktu">Waktu</label>
+                        <input type="time" id="inputWaktu" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="inputAktivitas">Nama Aktivitas</label>
+                        <select id="inputAktivitas" onchange="onActivityChange()" required>
+                            <option value="">-- Pilih Aktivitas --</option>
+                            <option value="5 Menit Menjelang Masuk">5 Menit Menjelang Masuk</option>
+                            <option value="Jam Pelajaran 1">Jam Pelajaran 1</option>
+                            <option value="Jam Pelajaran 2">Jam Pelajaran 2</option>
+                            <option value="Jam Pelajaran 3">Jam Pelajaran 3</option>
+                            <option value="Jam Pelajaran 4">Jam Pelajaran 4</option>
+                            <option value="Jam Pelajaran 5">Jam Pelajaran 5</option>
+                            <option value="Jam Pelajaran 6">Jam Pelajaran 6</option>
+                            <option value="Jam Pelajaran 7">Jam Pelajaran 7</option>
+                            <option value="Jam Pelajaran 8">Jam Pelajaran 8</option>
+                            <option value="Jam Pelajaran 9">Jam Pelajaran 9</option>
+                            <option value="Jam Pelajaran 10">Jam Pelajaran 10</option>
+                            <option value="Jam Pelajaran 11">Jam Pelajaran 11</option>
+                            <option value="Jam Pelajaran 12">Jam Pelajaran 12</option>
+                            <option value="Jam Senam">Jam Senam</option>
+                            <option value="Jam Istirahat">Jam Istirahat</option>
+                            <option value="Jam Kokurikuler">Jam Kokurikuler</option>
+                            <option value="Jam Literasi">Jam Literasi</option>
+                            <option value="Jam Numerasi">Jam Numerasi</option>
+                            <option value="Jam Shalat Zuhur">Jam Shalat Zuhur</option>
+                            <option value="Jam Shalat Ashar">Jam Shalat Ashar</option>
+                            <option value="Jam Pulang">Jam Pulang</option>
+                            <option value="__custom__">✏️ Lainnya (Ketik Manual)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="customActivityGroup" style="display:none;">
+                        <label for="inputCustomActivity">Aktivitas Custom</label>
+                        <input type="text" id="inputCustomActivity" placeholder="Ketik nama aktivitas...">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="inputAudio">File Suara</label>
+                        <select id="inputAudio">
+                            <option value="__fallback__">🔊 Bel Default (Sintetis)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary" id="btnSubmit">💾 Simpan Jadwal</button>
+                        <button type="button" class="btn btn-secondary" id="btnCancel" onclick="cancelEdit()" style="display:none;">✖ Batal</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Schedule Table dengan Dropdown Hari di Judul -->
+            <section class="table-section">
+                <div class="section-header table-section-header">
+                    <div class="day-dropdown-container">
+                        <span class="day-dropdown-label">📅 Jadwal Hari</span>
+                        <select id="selectDayDropdown" class="select-day-dropdown" onchange="selectDay(this.value)">
+                            <option value="Senin">Senin</option>
+                            <option value="Selasa">Selasa</option>
+                            <option value="Rabu">Rabu</option>
+                            <option value="Kamis">Kamis</option>
+                            <option value="Jumat">Jumat</option>
+                            <option value="Sabtu">Sabtu</option>
+                            <option value="Minggu">Minggu</option>
+                        </select>
+                        <button class="btn btn-copy-day" onclick="openCopyScheduleModal()" title="Salin seluruh jadwal hari ini ke hari lain">
+                            <span>📋</span> Salin ke Hari Lain
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-wrapper">
+                    <table id="scheduleTable">
+                        <thead>
+                            <tr>
+                                <th class="col-th-no">NO.</th>
+                                <th class="col-th-time">Jam</th>
+                                <th>Aktivitas</th>
+                                <th>Audio</th>
+                                <th class="col-th-action">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleBody">
+                            <tr class="empty-row">
+                                <td colspan="5">
+                                    <div class="empty-state">
+                                        <span class="empty-icon">📭</span>
+                                        <span>Belum ada jadwal untuk hari ini.</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Footer Credit Pengembang Aplikasi (Pindah Keluar dari Pengaturan) -->
+        <footer class="app-footer">
+            <div class="footer-credit">
+                <span class="footer-brand"><img src="icons/appIcon.png" alt="BELSKO" class="footer-mini-icon"> <strong>BELSKO</strong> v1.0.0</span>
+                <span class="footer-sep">•</span>
+                <span class="footer-author">Development By Andri Fernanda S.Pd., Gr.</span>
+            </div>
+        </footer>
+    </main>
+
+    <!-- Modal Koleksi Audio (Menu Audio di Header) -->
+    <div class="modal-overlay" id="audioModalOverlay" style="display:none;" onclick="closeAudioModalOverlay(event)">
+        <div class="modal modal-md" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>🎵 Koleksi Audio Bel</h2>
+                <button class="btn-close" onclick="closeAudioModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="audio-modal-toolbar">
+                    <p class="settings-desc">File audio di folder <code>resources/audio</code>. Klik tombol <strong>Play</strong> untuk mendengarkan pratinjau suara.</p>
+                    <button class="btn btn-upload" onclick="uploadAudio()">
+                        <span>📂</span> Upload File Audio
+                    </button>
+                    <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.m4a" multiple style="display:none;" onchange="handleAudioFilesSelected(event)">
+                </div>
+                <div class="audio-player-list" id="audioPlayerList">
+                    <!-- Daftar audio dan tombol Play akan dirender oleh JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Pengaturan (Desain Ulang Bersih & Teratur) -->
+    <div class="modal-overlay" id="settingsOverlay" style="display:none;" onclick="closeSettingsOverlay(event)">
+        <div class="modal modal-settings" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <div class="modal-title-wrap">
+                    <span class="modal-title-icon">⚙️</span>
+                    <h2>Pengaturan BELSKO</h2>
+                </div>
+                <button class="btn-close" onclick="closeSettings()" title="Tutup">✕</button>
+            </div>
+            <div class="modal-body settings-modal-body">
+                <!-- Card 1: Nama Sekolah -->
+                <div class="setting-card">
+                    <div class="setting-card-head">
+                        <div class="setting-icon-badge">🏫</div>
+                        <div class="setting-text-info">
+                            <h3 class="setting-title">Nama Sekolah</h3>
+                            <p class="setting-subtitle">Ditampilkan pada baris kedua header aplikasi.</p>
+                        </div>
+                    </div>
+                    <div class="setting-card-body">
+                        <div class="school-input-row">
+                            <input type="text" id="settingSchoolName" placeholder="Ketik nama sekolah..." class="setting-text-input">
+                            <button class="btn btn-primary btn-save-school" onclick="saveSchoolName()">
+                                <span>💾</span> Simpan
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Auto-Start Windows -->
+                <div class="setting-card">
+                    <div class="setting-card-head">
+                        <div class="setting-icon-badge">🚀</div>
+                        <div class="setting-text-info">
+                            <h3 class="setting-title">Auto-Start saat Komputer Menyala</h3>
+                            <p class="setting-subtitle">BELSKO otomatis terbuka & siap bunyikan bel saat Windows hidup.</p>
+                        </div>
+                    </div>
+                    <div class="setting-card-body">
+                        <div class="autostart-toggle-row">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleAutoStart" onchange="toggleAutoStartWindows(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="autostart-status-label" id="autoStartStatusLabel">Jalankan otomatis saat Windows dinyalakan</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 4: Backup & Restore Jadwal -->
+                <div class="setting-card">
+                    <div class="setting-card-head">
+                        <div class="setting-icon-badge">📦</div>
+                        <div class="setting-text-info">
+                            <h3 class="setting-title">Cadangkan & Pulihkan Jadwal</h3>
+                            <p class="setting-subtitle">Ekspor jadwal ke file JSON atau pulihkan data dari file cadangan.</p>
+                        </div>
+                    </div>
+                    <div class="setting-card-body">
+                        <div class="backup-action-grid">
+                            <button class="btn btn-backup" onclick="exportBackupData()">
+                                <span>💾</span> Export Cadangan (.JSON)
+                            </button>
+                            <button class="btn btn-restore" onclick="triggerImportBackup()">
+                                <span>📥</span> Pulihkan dari File (.JSON)
+                            </button>
+                            <input type="file" id="backupFileInput" accept=".json" style="display:none;" onchange="handleImportBackupFile(event)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Salin Jadwal ke Hari Lain -->
+    <div class="modal-overlay" id="copyScheduleModalOverlay" style="display:none;" onclick="closeCopyScheduleModalOverlay(event)">
+        <div class="modal modal-md" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2>📋 Salin Jadwal Antar Hari</h2>
+                <button class="btn-close" onclick="closeCopyScheduleModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="copy-source-info">
+                    <div class="copy-source-badge">
+                        <span>Sumber Hari:</span>
+                        <strong id="copySourceDayLabel">Senin</strong>
+                        <span class="badge-count" id="copySourceCount">0 jadwal</span>
+                    </div>
+                    <p class="settings-desc">Pilih hari-hari tujuan untuk menduplikasi seluruh jadwal hari sumber secara instan.</p>
+                </div>
+
+                <div class="copy-target-days-section">
+                    <div class="copy-target-header">
+                        <label class="form-check-label">
+                            <input type="checkbox" id="checkSelectAllDays" onchange="toggleSelectAllCopyDays(this.checked)">
+                            <strong>Pilih Semua Hari Tujuan</strong>
+                        </label>
+                    </div>
+                    <div class="copy-days-grid" id="copyDaysGrid">
+                        <!-- Rendered dynamically by JS -->
+                    </div>
+                </div>
+
+                <div class="copy-mode-section">
+                    <h3>Mode Penulisan Jadwal</h3>
+                    <div class="copy-mode-options">
+                        <label class="radio-card">
+                            <input type="radio" name="copyMode" value="replace" checked>
+                            <div class="radio-content">
+                                <strong>Gantikan Jadwal (Timpa Bersih)</strong>
+                                <span>Menghapus jadwal lama di hari tujuan lalu menyalin jadwal baru ini secara utuh.</span>
+                            </div>
+                        </label>
+                        <label class="radio-card">
+                            <input type="radio" name="copyMode" value="append">
+                            <div class="radio-content">
+                                <strong>Tambahkan (Gabungkan)</strong>
+                                <span>Menambahkan ke jadwal yang ada, jadwal dengan jam yang sama akan dilewati.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer-actions">
+                    <button class="btn btn-secondary" onclick="closeCopyScheduleModal()">Batal</button>
+                    <button class="btn btn-primary" onclick="executeCopySchedule()">Salin Jadwal Sekarang</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Dialog Konfirmasi & Peringatan -->
+    <div class="modal-overlay" id="dialogModalOverlay" style="display:none;" onclick="closeDialogModalOverlay(event)">
+        <div class="modal modal-dialog" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h2 id="dialogTitle">⚠️ Peringatan</h2>
+                <button class="btn-close" onclick="closeDialogModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="dialog-content-wrapper">
+                    <div class="dialog-icon" id="dialogIcon">⚠️</div>
+                    <div class="dialog-message" id="dialogMessage">Pesan dialog...</div>
+                </div>
+                <div class="dialog-actions" id="dialogActions">
+                    <!-- Tombol aksi dinamis -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/neutralino.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
