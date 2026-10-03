@@ -11,7 +11,8 @@ let lastTriggered = '';
 let audioFiles = [];
 let settings = {
     schoolName: 'SMP Negeri 1 Indonesia',
-    theme: 'light'
+    theme: 'light',
+    autoStart: false
 };
 
 // Preview Audio State
@@ -60,6 +61,9 @@ function bootstrapUI() {
     selectDay(selectedDay);
     updateStatusBadge();
     updateTotalSchedules();
+
+    const toggle = document.getElementById('toggleAutoStart');
+    if (toggle) toggle.checked = !!settings.autoStart;
 }
 
 async function initApp() {
@@ -67,6 +71,14 @@ async function initApp() {
         await loadSettings();
         await loadSchedules();
         await loadGlobalState();
+
+        // Pastikan folder resources/audio tersedia di disk
+        try {
+            await Neutralino.filesystem.createDirectory('./resources/audio');
+        } catch (_) {
+            try { await Neutralino.filesystem.createDirectory('resources/audio'); } catch (_) {}
+        }
+
         await scanAudioFiles();
     } catch (e) {
         console.warn('Neutralino storage fallback to localStorage:', e);
@@ -205,23 +217,41 @@ async function scanAudioFiles() {
         select.innerHTML = '<option value="__fallback__">🔊 Bel Default (Sintetis)</option>';
     }
 
-    try {
-        const entries = await Neutralino.filesystem.readDirectory('./resources/audio');
-        audioFiles = entries
-            .filter(e => e.type === 'FILE' && /\.(mp3|wav|ogg|m4a)$/i.test(e.entry))
-            .map(e => e.entry)
-            .sort();
+    let scanned = [];
+    // 1. Coba baca dari folder file audio fisik di disk
+    const audioPaths = ['./resources/audio', 'resources/audio', 'audio'];
+    for (const p of audioPaths) {
+        try {
+            const entries = await Neutralino.filesystem.readDirectory(p);
+            const found = entries
+                .filter(e => e.type === 'FILE' && /\.(mp3|wav|ogg|m4a)$/i.test(e.entry))
+                .map(e => e.entry);
+            if (found.length > 0) {
+                scanned = found;
+                break;
+            }
+        } catch (_) {}
+    }
 
-        if (select) {
-            audioFiles.forEach(file => {
-                const opt = document.createElement('option');
-                opt.value = file;
-                opt.textContent = `🎵 ${file}`;
-                select.appendChild(opt);
-            });
-        }
-    } catch (e) {
-        console.warn('Could not scan audio folder:', e);
+    // 2. Jika di folder fisik belum ada, coba baca dari paket resources bawaan
+    if (scanned.length === 0) {
+        try {
+            const resFiles = await Neutralino.resources.getFiles();
+            scanned = resFiles
+                .filter(f => /\/audio\/[^/]+\.(mp3|wav|ogg|m4a)$/i.test(f))
+                .map(f => f.split('/').pop());
+        } catch (_) {}
+    }
+
+    audioFiles = Array.from(new Set(scanned)).sort();
+
+    if (select) {
+        audioFiles.forEach(file => {
+            const opt = document.createElement('option');
+            opt.value = file;
+            opt.textContent = `🎵 ${file}`;
+            select.appendChild(opt);
+        });
     }
 }
 
@@ -400,14 +430,6 @@ function deleteSchedule(id) {
     );
 }
 
-function toggleScheduleStatus(id) {
-    const sch = schedules.find(s => s.id === id);
-    if (!sch) return;
-    sch.active = !sch.active;
-    saveSchedules();
-    renderTable();
-    updateTotalSchedules();
-}
 
 function cancelEdit() {
     resetForm();
@@ -518,7 +540,9 @@ function checkSchedule() {
     if (!globalBelActive) return;
 
     const now = new Date();
-    if (now.getSeconds() !== 0) return;
+    const currentSeconds = now.getSeconds();
+    // Berikan toleransi hingga detik ke-5 agar bel tidak terlewat jika terjadi latensi sistem
+    if (currentSeconds > 5) return;
 
     const currentHari = HARI_LIST[now.getDay()];
     const currentWaktu = String(now.getHours()).padStart(2, '0') + ':' +
@@ -539,8 +563,9 @@ function checkSchedule() {
             playBellAudio(sch.audio);
             showToast('🔔', 'Bel Berbunyi!', `${sch.aktivitas} — ${sch.waktu}`);
         });
-
-        setTimeout(() => { lastTriggered = ''; }, 61000);
+    } else {
+        // Tandai menit ini sudah diperiksa agar tidak filter berulang pada detik 1-5
+        lastTriggered = currentWaktu;
     }
 }
 
@@ -568,10 +593,16 @@ async function playBellAudio(audioFile) {
             audio.volume = 1.0;
             audio.play().catch(err => {
                 console.warn('Bell binary play failed, trying chime:', err);
+                try { URL.revokeObjectURL(bellUrl); } catch (_) {}
                 playFallbackChime();
             });
             audio.onended = () => {
                 try { URL.revokeObjectURL(bellUrl); } catch (_) {}
+            };
+            audio.onerror = () => {
+                try { URL.revokeObjectURL(bellUrl); } catch (_) {}
+                console.warn('Bell audio error, using fallback chime');
+                playFallbackChime();
             };
         } catch (e) {
             console.warn('Binary read fallback to direct Audio:', e);
@@ -975,7 +1006,10 @@ function deleteAudioFile(fileName) {
 function openSettings() {
     document.getElementById('settingsOverlay').style.display = 'flex';
     document.getElementById('settingSchoolName').value = settings.schoolName;
-    checkAutoStartStatus();
+    if (!autoStartBusy) {
+        updateAutoStartUI(settings.autoStart);
+        checkAutoStartStatus();
+    }
 }
 
 function closeSettings() {
@@ -1391,46 +1425,136 @@ function handleImportBackupFile(event) {
 //  AUTO-START WINDOWS
 // ============================================================
 
+// PENTING: nama value Registry Windows bersifat case-insensitive.
+// "BELSKO" dan "Belsko" adalah entri yang SAMA — jangan pernah menghapus
+// varian nama lain setelah menulis, karena itu akan menghapus entri yang baru ditulis.
+const AUTOSTART_RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+const AUTOSTART_VALUE_NAME = 'BELSKO';
+let autoStartBusy = false;
+
+function updateAutoStartUI(enabled, busy = false) {
+    const toggle = document.getElementById('toggleAutoStart');
+    if (toggle) {
+        toggle.checked = !!enabled;
+        toggle.disabled = busy;
+    }
+    const label = document.getElementById('autoStartStatusLabel');
+    if (label) {
+        label.textContent = busy ? '⏳ Menyimpan pengaturan...' : 'Jalankan otomatis saat Windows dinyalakan';
+    }
+}
+
+async function isAutoStartRegistered() {
+    const res = await Neutralino.os.execCommand(`reg.exe query "${AUTOSTART_RUN_KEY}" /v ${AUTOSTART_VALUE_NAME}`);
+    return res.exitCode === 0 && /REG_SZ/i.test(res.stdOut || '');
+}
+
 async function checkAutoStartStatus() {
+    if (autoStartBusy) return settings.autoStart;
     try {
-        let res = await Neutralino.os.execCommand('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "BELSKO"');
-        let isEnabled = res.exitCode === 0 && res.stdOut.includes('BELSKO');
-        if (!isEnabled) {
-            res = await Neutralino.os.execCommand('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "Belsko"');
-            isEnabled = res.exitCode === 0 && res.stdOut.includes('Belsko');
+        const enabled = await isAutoStartRegistered();
+        // Abaikan hasil jika operasi toggle dimulai saat query berjalan
+        if (autoStartBusy) return settings.autoStart;
+        if (settings.autoStart !== enabled) {
+            settings.autoStart = enabled;
+            saveSettings();
         }
-        const toggle = document.getElementById('toggleAutoStart');
-        if (toggle) toggle.checked = isEnabled;
     } catch (e) {
         console.warn('Check autostart error:', e);
+    }
+    updateAutoStartUI(settings.autoStart);
+    return settings.autoStart;
+}
+
+// Menyusun command line yang akan dijalankan Windows saat startup
+async function resolveAutoStartCommand() {
+    let appDir = window.NL_PATH || '.';
+    try { appDir = await Neutralino.filesystem.getAbsolutePath(appDir); } catch (_) {}
+    appDir = appDir.replace(/\//g, '\\').replace(/\\+$/, '');
+
+    const candidates = [
+        'bel-sekolah-win_x64.exe',                    // rilis (exe satu folder dengan resources.neu)
+        'dist\\bel-sekolah\\bel-sekolah-win_x64.exe', // hasil "neu build" saat mode pengembangan
+        'bin\\neutralino-win_x64.exe'                 // binary pengembangan
+    ];
+
+    for (const candidate of candidates) {
+        const exePath = `${appDir}\\${candidate}`;
+        try {
+            await Neutralino.filesystem.getStats(exePath.replace(/\\/g, '/'));
+        } catch (_) {
+            continue;
+        }
+        if (candidate.startsWith('bin\\')) {
+            return `"${exePath}" --load-dir-res --path="${appDir}"`;
+        }
+        const exeDir = exePath.substring(0, exePath.lastIndexOf('\\'));
+        return `"${exePath}" --path="${exeDir}"`;
+    }
+    throw new Error(`File aplikasi (.exe) tidak ditemukan di ${appDir}`);
+}
+
+// PowerShell -EncodedCommand (Base64 UTF-16LE) kebal terhadap masalah tanda kutip cmd.exe
+function encodePowerShellCommand(script) {
+    let binary = '';
+    for (let i = 0; i < script.length; i++) {
+        const code = script.charCodeAt(i);
+        binary += String.fromCharCode(code & 0xff, code >> 8);
+    }
+    return btoa(binary);
+}
+
+async function writeAutoStartRegistry(commandLine) {
+    const psScript =
+        `[Microsoft.Win32.Registry]::SetValue('HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run', ` +
+        `'${AUTOSTART_VALUE_NAME}', '${commandLine.replace(/'/g, "''")}')`;
+    const res = await Neutralino.os.execCommand(
+        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encodePowerShellCommand(psScript)}`
+    );
+    if (res.exitCode !== 0) {
+        throw new Error(res.stdErr || res.stdOut || 'PowerShell gagal menulis Registry Windows');
     }
 }
 
 async function toggleAutoStartWindows(enabled) {
+    if (autoStartBusy) return;
+    autoStartBusy = true;
+    updateAutoStartUI(enabled, true);
+
     try {
         if (enabled) {
-            const currentPath = window.NL_PATH || 'D:\\Proyek\\bel-sekolah';
-            const exePath = `${currentPath}\\bin\\neutralino-win_x64.exe`;
-            const cmd = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "BELSKO" /t REG_SZ /d "\\"${exePath}\\" --load-dir-res --path=\\"${currentPath}\\"" /f`;
-            const res = await Neutralino.os.execCommand(cmd);
-            if (res.exitCode === 0) {
-                // Bersihkan entri lama jika ada
-                try { await Neutralino.os.execCommand('reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "Belsko" /f'); } catch (_) {}
-                showToast('🚀', 'Auto-Start Aktif', 'BELSKO akan otomatis terbuka setiap komputer Windows dinyalakan.');
-            } else {
-                throw new Error(res.stdErr || 'Gagal mengubah registry');
-            }
+            await writeAutoStartRegistry(await resolveAutoStartCommand());
         } else {
-            const cmd = `reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "BELSKO" /f`;
-            await Neutralino.os.execCommand(cmd);
-            try { await Neutralino.os.execCommand('reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "Belsko" /f'); } catch (_) {}
+            await Neutralino.os.execCommand(`reg.exe delete "${AUTOSTART_RUN_KEY}" /v ${AUTOSTART_VALUE_NAME} /f`);
+        }
+
+        // Verifikasi langsung ke Registry: sumber kebenaran status auto-start
+        const actual = await isAutoStartRegistered();
+        if (actual !== enabled) {
+            throw new Error(enabled
+                ? 'Entri auto-start tidak ditemukan di Registry setelah disimpan.'
+                : 'Entri auto-start masih ada di Registry setelah dihapus.');
+        }
+
+        settings.autoStart = actual;
+        await saveSettings();
+        if (actual) {
+            showToast('🚀', 'Auto-Start Aktif', 'BELSKO akan otomatis terbuka setiap komputer Windows dinyalakan.');
+        } else {
             showToast('⏸️', 'Auto-Start Nonaktif', 'BELSKO tidak akan otomatis dibuka saat startup.');
         }
     } catch (err) {
         console.error('Toggle autostart error:', err);
-        showWarningModal('❌ Pengaturan Auto-Start Gagal', `Tidak dapat memperbarui status auto-start Windows: ${escapeHtml(err.message || '')}`);
-        const toggle = document.getElementById('toggleAutoStart');
-        if (toggle) toggle.checked = !enabled;
+        try { Neutralino.debug.log(`Auto-start error: ${err && err.message}`, 'ERROR'); } catch (_) {}
+
+        let actual = !enabled;
+        try { actual = await isAutoStartRegistered(); } catch (_) {}
+        settings.autoStart = actual;
+        saveSettings();
+        showWarningModal('❌ Pengaturan Auto-Start Gagal', `Tidak dapat memperbarui status auto-start Windows: ${escapeHtml((err && err.message) || '')}`);
+    } finally {
+        autoStartBusy = false;
+        updateAutoStartUI(settings.autoStart);
     }
 }
 

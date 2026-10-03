@@ -19,11 +19,12 @@
     "debug.log",
     "filesystem.*",
     "storage.*",
-    "window.*"
+    "window.*",
+    "resources.*"
   ],
   "modes": {
     "window": {
-      "title": "BELSKO",
+      "title": "BELSKO - Bel Sekolah Otomatis",
       "width": 950,
       "height": 650,
       "minWidth": 800,

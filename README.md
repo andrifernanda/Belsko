@@ -50,7 +50,7 @@ Dibangun menggunakan arsitektur **Neutralinojs**, BELSKO sangat ringan, hemat pe
 - 🕒 **Sinkronisasi Waktu Windows Instan**
   - Tombol pintas **🕒 Waktu** di header untuk langsung membuka menu pengaturan *Date & Time* Windows guna memastikan jam sistem selalu akurat.
 - 🎨 **Tema Terang (Light Mode) & Gelap (Dark Mode)**
-  - Tampilan *Light Mode* bersih dan elegan sebagai standar, serta opsi *Dark Mode* untuk kenyamanan mata.
+  - Tampilan *Light Mode* bersih dan elegan sebagai standar, serta opsi *Dark Mode* untuk kenyamanan mata dengan sakelar toggle instan di header.
 - 🏫 **Kustomisasi Profil Sekolah**
   - Pengaturan nama sekolah yang tampil di header utama aplikasi.
 - 🖥️ **Layar Penuh Otomatis (Fullscreen / Maximized)**
